@@ -212,6 +212,8 @@ Pricing Rules:
 - For Canada listings: Include shipping in total price (item + shipping)
 - NEVER include customs, duties, or taxes
 
+CRITICAL: Return ONLY valid JSON with no additional text, explanations, or markdown formatting.
+
 You MUST return valid JSON in this exact format:
 {
   "summary": {
@@ -345,7 +347,7 @@ async function callClaude(systemPrompt: string, userPrompt: string, apiKey: stri
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: "claude-3-opus-20240229",
+        model: "claude-3-5-sonnet-20241022",
         max_tokens: 4096,
         system: systemPrompt,
         messages: [
@@ -369,15 +371,29 @@ async function callClaude(systemPrompt: string, userPrompt: string, apiKey: stri
     const data = await response.json();
     console.log("Claude API response received");
 
-    const content = data.content?.[0]?.text || "";
+    let content = data.content?.[0]?.text || "";
+    console.log("Raw response length:", content.length);
+
+    content = content.trim();
+
+    if (content.startsWith("```json")) {
+      content = content.replace(/^```json\s*/i, "").replace(/```\s*$/, "");
+    } else if (content.startsWith("```")) {
+      content = content.replace(/^```\s*/, "").replace(/```\s*$/, "");
+    }
+
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      content = jsonMatch[0];
+    }
 
     try {
       const parsed = JSON.parse(content);
       console.log("Successfully parsed Claude response");
       return parsed;
     } catch (e) {
-      console.error("Failed to parse Claude response:", content.substring(0, 500));
-      throw new Error("LLM returned invalid JSON");
+      console.error("Failed to parse Claude response. First 1000 chars:", content.substring(0, 1000));
+      throw new Error("LLM returned invalid JSON. Please try again or check your API key.");
     }
   } catch (error) {
     clearTimeout(timeoutId);
