@@ -25,6 +25,10 @@ export default function Settings() {
     default_region: 'canada',
     use_ai_filtering: true,
   });
+  const [originalKeys, setOriginalKeys] = useState({
+    serpapi_key: '',
+    llm_api_key: '',
+  });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [showSerpApi, setShowSerpApi] = useState(false);
@@ -47,6 +51,10 @@ export default function Settings() {
       if (response.ok) {
         const data = await response.json();
         setSettings(data);
+        setOriginalKeys({
+          serpapi_key: data.serpapi_key,
+          llm_api_key: data.llm_api_key,
+        });
       }
     } catch (error) {
       console.error('Error loading settings:', error);
@@ -60,6 +68,15 @@ export default function Settings() {
     setMessage('');
 
     try {
+      const payloadSettings = { ...settings };
+
+      if (settings.serpapi_key === originalKeys.serpapi_key) {
+        payloadSettings.serpapi_key = '';
+      }
+      if (settings.llm_api_key === originalKeys.llm_api_key) {
+        payloadSettings.llm_api_key = '';
+      }
+
       const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/settings`;
       const response = await fetch(apiUrl, {
         method: 'POST',
@@ -67,7 +84,7 @@ export default function Settings() {
           'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(settings),
+        body: JSON.stringify(payloadSettings),
       });
 
       if (response.ok) {

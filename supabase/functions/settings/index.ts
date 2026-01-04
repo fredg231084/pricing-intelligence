@@ -89,21 +89,29 @@ Deno.serve(async (req: Request) => {
 
       const { data: existingSettings } = await supabase
         .from("app_settings")
-        .select("id")
+        .select("*")
         .maybeSingle();
 
       if (existingSettings) {
+        const updateData: any = {
+          llm_provider: body.llm_provider,
+          default_currency: body.default_currency,
+          default_region: body.default_region,
+          use_ai_filtering: body.use_ai_filtering,
+          updated_at: new Date().toISOString(),
+        };
+
+        if (body.serpapi_key && body.serpapi_key.trim() !== '') {
+          updateData.serpapi_key = body.serpapi_key;
+        }
+
+        if (body.llm_api_key && body.llm_api_key.trim() !== '') {
+          updateData.llm_api_key = body.llm_api_key;
+        }
+
         const { data, error } = await supabase
           .from("app_settings")
-          .update({
-            serpapi_key: body.serpapi_key,
-            llm_api_key: body.llm_api_key,
-            llm_provider: body.llm_provider,
-            default_currency: body.default_currency,
-            default_region: body.default_region,
-            use_ai_filtering: body.use_ai_filtering,
-            updated_at: new Date().toISOString(),
-          })
+          .update(updateData)
           .eq("id", existingSettings.id)
           .select()
           .single();
