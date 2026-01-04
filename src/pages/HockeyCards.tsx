@@ -36,6 +36,10 @@ export default function HockeyCards() {
 
     try {
       const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-price`;
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 70000);
+
       const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
@@ -47,17 +51,24 @@ export default function HockeyCards() {
           type: 'hockey_card',
           forceRefresh,
         }),
+        signal: controller.signal,
       });
 
+      clearTimeout(timeoutId);
+
       if (!response.ok) {
-        const errorData = await response.json();
+        const errorData = await response.json().catch(() => ({ error: 'Failed to fetch pricing data' }));
         throw new Error(errorData.error || 'Failed to fetch pricing data');
       }
 
       const data = await response.json();
       setResult(data);
     } catch (err: any) {
-      setError(err.message || 'An error occurred');
+      if (err.name === 'AbortError') {
+        setError('Request timed out. This usually means the search is taking too long. Please try a more specific query or try again later.');
+      } else {
+        setError(err.message || 'An error occurred');
+      }
     } finally {
       setLoading(false);
     }

@@ -133,8 +133,10 @@ async function fetchEbaySoldListings(
   apiKey: string,
   region: string
 ): Promise<any[]> {
+  console.log(`Fetching eBay sold listings for query: "${query}"`);
+
   const siteId = region === "canada" ? "ebay.ca" : "ebay.com";
-  
+
   const url = new URL("https://serpapi.com/search");
   url.searchParams.append("engine", "ebay");
   url.searchParams.append("ebay_domain", siteId);
@@ -143,14 +145,35 @@ async function fetchEbaySoldListings(
   url.searchParams.append("LH_Complete", "1");
   url.searchParams.append("api_key", apiKey);
 
-  const response = await fetch(url.toString());
-  
-  if (!response.ok) {
-    throw new Error(`SerpApi error: ${response.statusText}`);
-  }
+  console.log("Calling SerpAPI...");
 
-  const data = await response.json();
-  return data.organic_results || [];
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 20000);
+
+  try {
+    const response = await fetch(url.toString(), {
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("SerpAPI error:", errorText);
+      throw new Error(`SerpApi error: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    console.log(`SerpAPI returned ${data.organic_results?.length || 0} results`);
+
+    return data.organic_results || [];
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if (error.name === 'AbortError') {
+      throw new Error("SerpAPI request timed out after 20 seconds");
+    }
+    throw error;
+  }
 }
 
 async function analyzWithLLM(
@@ -308,39 +331,60 @@ Thumbnail: ${listing.thumbnail || "N/A"}
 }
 
 async function callClaude(systemPrompt: string, userPrompt: string, apiKey: string): Promise<any> {
-  const response = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model: "claude-3-opus-20240229",
-      max_tokens: 4096,
-      system: systemPrompt,
-      messages: [
-        {
-          role: "user",
-          content: userPrompt,
-        },
-      ],
-    }),
-  });
+  console.log("Calling Claude API...");
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Claude API error: ${response.statusText} - ${errorText}`);
-  }
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 45000);
 
-  const data = await response.json();
-  const content = data.content?.[0]?.text || "";
-  
   try {
-    return JSON.parse(content);
-  } catch (e) {
-    console.error("Failed to parse Claude response:", content);
-    throw new Error("LLM returned invalid JSON");
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: "claude-3-opus-20240229",
+        max_tokens: 4096,
+        system: systemPrompt,
+        messages: [
+          {
+            role: "user",
+            content: userPrompt,
+          },
+        ],
+      }),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("Claude API error:", errorText);
+      throw new Error(`Claude API error: ${response.statusText} - ${errorText}`);
+    }
+
+    const data = await response.json();
+    console.log("Claude API response received");
+
+    const content = data.content?.[0]?.text || "";
+
+    try {
+      const parsed = JSON.parse(content);
+      console.log("Successfully parsed Claude response");
+      return parsed;
+    } catch (e) {
+      console.error("Failed to parse Claude response:", content.substring(0, 500));
+      throw new Error("LLM returned invalid JSON");
+    }
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if (error.name === 'AbortError') {
+      throw new Error("Claude API request timed out after 45 seconds");
+    }
+    throw error;
   }
 }
 
